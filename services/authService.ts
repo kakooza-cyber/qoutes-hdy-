@@ -1,128 +1,99 @@
 import { User } from '../types';
 
+const API_URL = 'http://localhost:5000/api/auth';
+
+// Helper to handle requests
+const request = async (endpoint: string, method: string, body?: any, token?: string) => {
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!response.ok) throw new Error('API Request Failed');
+  return response.json();
+};
+
 let currentUser: User | null = null;
-let users: User[] = [
-  { id: '1', username: 'testuser', email: 'test@example.com', likedQuotes: [], favoritedQuotes: [] },
-];
 
-/**
- * Simulates a login API call.
- * @param username The username for login.
- * @param password The password for login.
- * @returns A promise resolving to true if login is successful, false otherwise.
- */
+// Initial check to hydrate user from local storage
+try {
+  const storedUser = localStorage.getItem('user');
+  if (storedUser) currentUser = JSON.parse(storedUser);
+} catch (e) {
+  console.error("Error parsing stored user", e);
+}
+
 export const login = async (username: string, password: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Basic mock authentication
-      const user = users.find(u => u.username === username);
-      if (user && password === 'password123') { // Mock password
-        currentUser = user;
-        console.log('User logged in:', currentUser.username);
-        resolve(true);
-      } else {
-        console.log('Login failed for user:', username);
-        resolve(false);
-      }
-    }, 1000); // Simulate network delay
-  });
+  try {
+    const data = await request('/login', 'POST', { username, password });
+    if (data.token) {
+      currentUser = data.user;
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 };
 
-/**
- * Simulates a signup API call.
- * @param username The username for signup.
- * @param email The email for signup.
- * @param password The password for signup.
- * @returns A promise resolving to true if signup is successful, false otherwise.
- */
 export const signup = async (username: string, email: string, password: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      if (users.some(u => u.username === username || u.email === email)) {
-        console.log('Signup failed: Username or email already exists.');
-        resolve(false);
-      } else {
-        const newUser: User = {
-          id: String(users.length + 1),
-          username,
-          email,
-          likedQuotes: [],
-          favoritedQuotes: [],
-        };
-        users.push(newUser);
-        currentUser = newUser;
-        console.log('User signed up and logged in:', currentUser.username);
-        resolve(true);
-      }
-    }, 1000); // Simulate network delay
-  });
+  try {
+    const data = await request('/signup', 'POST', { username, email, password });
+    if (data.token) {
+      currentUser = data.user;
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 };
 
-/**
- * Simulates a social media login.
- * @param provider The provider name (google, facebook, twitter).
- */
 export const loginWithSocial = async (provider: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Create a mock user based on the provider
-      const socialUser: User = {
-        id: `social-${provider}-${Date.now()}`,
-        username: `${provider.charAt(0).toUpperCase() + provider.slice(1)} User`,
-        email: `user@${provider}.com`,
-        avatarUrl: `https://picsum.photos/seed/${provider}/150/150`,
-        likedQuotes: [],
-        favoritedQuotes: [],
-      };
-      
-      // Check if user already exists (mock logic) or add them
-      const existing = users.find(u => u.email === socialUser.email);
-      if (existing) {
-        currentUser = existing;
-      } else {
-        users.push(socialUser);
-        currentUser = socialUser;
-      }
-      
-      console.log(`User logged in via ${provider}:`, currentUser.username);
-      resolve(true);
-    }, 1500);
-  });
+  try {
+    const data = await request('/social-login', 'POST', { provider });
+    if (data.token) {
+      currentUser = data.user;
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 };
 
-/**
- * Updates the current user's profile.
- * @param updates Partial user object with fields to update.
- */
 export const updateCurrentUser = async (updates: Partial<User>): Promise<void> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      if (currentUser) {
-        currentUser = { ...currentUser, ...updates };
-        // Update the user in the 'users' array as well
-        const index = users.findIndex(u => u.id === currentUser?.id);
-        if (index !== -1) {
-          users[index] = currentUser;
-        }
-        console.log('User profile updated', currentUser);
-      }
-      resolve();
-    }, 500);
-  });
+  const token = localStorage.getItem('token');
+  if (!token) return;
+
+  try {
+    const updatedUser = await request('/me', 'PUT', updates, token);
+    currentUser = updatedUser;
+    localStorage.setItem('user', JSON.stringify(currentUser));
+  } catch (error) {
+    console.error("Failed to update profile", error);
+  }
 };
 
-/**
- * Simulates a logout action.
- */
 export const logout = (): void => {
   currentUser = null;
-  console.log('User logged out.');
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
 };
 
-/**
- * Retrieves the currently logged-in user.
- * @returns The current user or null if no user is logged in.
- */
 export const getCurrentUser = (): User | null => {
   return currentUser;
 };
