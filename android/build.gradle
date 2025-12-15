@@ -1,26 +1,35 @@
-// File: android/app/build.gradle
+buildscript {
+    ext {
+        buildToolsVersion = "33.0.0"
+        minSdkVersion = 21
+        compileSdkVersion = 33
+        targetSdkVersion = 33
+        kotlinVersion = "1.8.0"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.3.1")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    }
+}
 
-android {
-    ...
-    signingConfigs {
-        release {
-            // Check if the necessary environment variables are set before trying to access the file
-            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
-                storeFile file(MYAPP_UPLOAD_STORE_FILE)
-                storePassword MYAPP_UPLOAD_STORE_PASSWORD
-                keyAlias MYAPP_UPLOAD_KEY_ALIAS
-                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
-            }
+allprojects {
+    repositories {
+        maven {
+            url("$rootDir/../node_modules/react-native/android")
         }
-    }
-    buildTypes {
-        release {
-            // Link the release build type to the new signing configuration
-            signingConfig signingConfigs.release
-            // Other settings...
-            minifyEnabled enableProguardInReleaseBuilds 
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        maven {
+            url("$rootDir/../node_modules/detox/Detox-android")
         }
+        maven {
+            url("$rootDir/../node_modules/jsc-android/dist")
+        }
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
     }
-    ...
-      }
+}
