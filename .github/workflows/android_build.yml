@@ -1,110 +1,66 @@
 name: Build Android APK
 
-on: [push]
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - uses: actions/setup-java@v4
+    - name: Setup JDK 17
+      uses: actions/setup-java@v4
       with:
-        java-version: '17'
         distribution: 'temurin'
+        java-version: '17'
     
-    - name: Create minimal Android project
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
       run: |
-        # Create directory structure
-        mkdir -p android/{app/src/main/{java/com/test,res/layout},gradle/wrapper}
+        if [ -f "package.json" ]; then
+          npm install
+        else
+          echo "Creating minimal package.json..."
+          echo '{"name":"app","version":"1.0.0","dependencies":{}}' > package.json
+        fi
+    
+    - name: Setup Android SDK (manual)
+      run: |
+        # Install Android SDK command line tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+        mkdir -p $HOME/android-sdk/cmdline-tools
+        unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
+        mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
         
-        # Create essential Gradle files
-        cat > android/settings.gradle << 'EOF'
-        rootProject.name = 'TestApp'
-        include ':app'
-        EOF
+        # Set environment variables
+        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+        echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
         
-        cat > android/build.gradle << 'EOF'
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:7.3.1'
-            }
-        }
+        # Accept licenses
+        yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
         
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        EOF
-        
-        cat > android/app/build.gradle << 'EOF'
-        apply plugin: 'com.android.application'
-        
-        android {
-            compileSdk 33
-            defaultConfig {
-                applicationId "com.test.app"
-                minSdk 21
-                targetSdk 33
-                versionCode 1
-                versionName "1.0"
-            }
-            buildTypes {
-                release {
-                    minifyEnabled false
-                }
-            }
-        }
-        
-        dependencies {
-        }
-        EOF
-        
-        # Create AndroidManifest.xml
-        cat > android/app/src/main/AndroidManifest.xml << 'EOF'
-        <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <application
-                android:allowBackup="true"
-                android:icon="@mipmap/ic_launcher"
-                android:label="Test App">
-                <activity
-                    android:name=".MainActivity"
-                    android:exported="true">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN" />
-                        <category android:name="android.intent.category.LAUNCHER" />
-                    </intent-filter>
-                </activity>
-            </application>
-        </manifest>
-        EOF
-        
-        # Download Gradle wrapper
-        cd android
-        wget -q https://raw.githubusercontent.com/gradle/gradle/master/gradlew
-        chmod +x gradlew
-        
-        mkdir -p gradle/wrapper
-        wget -q https://repo.maven.apache.org/maven2/org/gradle/wrapper/gradle-wrapper/7.5.1/gradle-wrapper-7.5.1.jar \
-          -O gradle/wrapper/gradle-wrapper.jar
-        
-        cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
-        distributionBase=GRADLE_USER_HOME
-        distributionPath=wrapper/dists
-        distributionUrl=https\://services.gradle.org/distributions/gradle-7.5.1-bin.zip
-        zipStoreBase=GRADLE_USER_HOME
-        zipStorePath=wrapper/dists
-        EOF
-        
-        cd ..
+        # Install required SDK components
+        $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+    
+    - name: Make gradlew executable
+      run: |
+        if [ -d "android" ]; then
+          cd android
+          chmod +x gradlew
+        else
+          echo "ERROR: android directory not found!"
+          exit 1
+        fi
     
     - name: Build APK
       run: |
@@ -114,5 +70,5 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: test-apk
+        name: app-debug
         path: android/app/build/outputs/apk/debug/*.apk
