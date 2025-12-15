@@ -1,99 +1,135 @@
 import { User } from '../types';
 
-const API_URL = 'http://localhost:5000/api/auth';
+// Keys for LocalStorage
+const USERS_STORAGE_KEY = 'quotely_users';
+const CURRENT_USER_KEY = 'quotely_current_user';
 
-// Helper to handle requests
-const request = async (endpoint: string, method: string, body?: any, token?: string) => {
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+// Helper to simulate network delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+// Helper to get all users
+const getUsers = (): User[] => {
+  const usersJson = localStorage.getItem(USERS_STORAGE_KEY);
+  return usersJson ? JSON.parse(usersJson) : [];
+};
 
-  if (!response.ok) throw new Error('API Request Failed');
-  return response.json();
+// Helper to save users
+const saveUsers = (users: User[]) => {
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 };
 
 let currentUser: User | null = null;
 
-// Initial check to hydrate user from local storage
+// Initial hydration
 try {
-  const storedUser = localStorage.getItem('user');
+  const storedUser = localStorage.getItem(CURRENT_USER_KEY);
   if (storedUser) currentUser = JSON.parse(storedUser);
 } catch (e) {
   console.error("Error parsing stored user", e);
 }
 
 export const login = async (username: string, password: string): Promise<boolean> => {
-  try {
-    const data = await request('/login', 'POST', { username, password });
-    if (data.token) {
-      currentUser = data.user;
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(currentUser));
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error(error);
-    return false;
+  await delay(800); // Simulate network request
+  const users = getUsers();
+  
+  // Simple check (in a real app, passwords should be hashed)
+  const user = users.find(u => u.username === username && (u as any).password === password);
+  
+  if (user) {
+    currentUser = user;
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
+    return true;
   }
+  return false;
 };
 
 export const signup = async (username: string, email: string, password: string): Promise<boolean> => {
-  try {
-    const data = await request('/signup', 'POST', { username, email, password });
-    if (data.token) {
-      currentUser = data.user;
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(currentUser));
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error(error);
-    return false;
+  await delay(800);
+  const users = getUsers();
+  
+  if (users.some(u => u.username === username || u.email === email)) {
+    return false; // User exists
   }
+
+  const newUser: User = {
+    id: `user-${Date.now()}`,
+    username,
+    email,
+    avatarUrl: `https://picsum.photos/seed/${username}/150/150`,
+    likedQuotes: [],
+    favoritedQuotes: [],
+  };
+
+  // Save password in a real app would be hashed. Storing here for mock login to work.
+  (newUser as any).password = password;
+
+  users.push(newUser);
+  saveUsers(users);
+  
+  currentUser = newUser;
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
+  return true;
 };
 
 export const loginWithSocial = async (provider: string): Promise<boolean> => {
-  try {
-    const data = await request('/social-login', 'POST', { provider });
-    if (data.token) {
-      currentUser = data.user;
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(currentUser));
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error(error);
-    return false;
+  await delay(1000);
+  const users = getUsers();
+  const mockEmail = `user@${provider}.com`;
+  
+  let user = users.find(u => u.email === mockEmail);
+  
+  if (!user) {
+    user = {
+      id: `social-${provider}-${Date.now()}`,
+      username: `${provider.charAt(0).toUpperCase() + provider.slice(1)} User`,
+      email: mockEmail,
+      avatarUrl: `https://picsum.photos/seed/${provider}/150/150`,
+      likedQuotes: [],
+      favoritedQuotes: [],
+    };
+    users.push(user);
+    saveUsers(users);
   }
+
+  currentUser = user;
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
+  return true;
 };
 
 export const updateCurrentUser = async (updates: Partial<User>): Promise<void> => {
-  const token = localStorage.getItem('token');
-  if (!token) return;
+  await delay(500);
+  if (!currentUser) return;
 
-  try {
-    const updatedUser = await request('/me', 'PUT', updates, token);
+  const users = getUsers();
+  const userIndex = users.findIndex(u => u.id === currentUser!.id);
+
+  if (userIndex !== -1) {
+    const updatedUser = { ...users[userIndex], ...updates };
+    users[userIndex] = updatedUser;
+    saveUsers(users);
+    
     currentUser = updatedUser;
-    localStorage.setItem('user', JSON.stringify(currentUser));
-  } catch (error) {
-    console.error("Failed to update profile", error);
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
   }
 };
 
 export const logout = (): void => {
   currentUser = null;
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
+  localStorage.removeItem(CURRENT_USER_KEY);
 };
 
 export const getCurrentUser = (): User | null => {
   return currentUser;
+};
+
+// Internal helper for other services to update user data (like likes/favorites)
+export const _internalUpdateUser = (updatedUser: User) => {
+  const users = getUsers();
+  const userIndex = users.findIndex(u => u.id === updatedUser.id);
+  if (userIndex !== -1) {
+    users[userIndex] = updatedUser;
+    saveUsers(users);
+    currentUser = updatedUser;
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
+  }
 };
