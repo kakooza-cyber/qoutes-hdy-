@@ -1,183 +1,118 @@
 name: Build Android APK
 
-on:
-  push:
-    branches: [main, master]
-  workflow_dispatch:
+on: [push]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
-    - name: Setup Java
-      uses: actions/setup-java@v4
+    - uses: actions/setup-java@v4
       with:
-        distribution: 'temurin'
         java-version: '17'
+        distribution: 'temurin'
     
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-    
-    - name: Install dependencies
+    - name: Create minimal Android project
       run: |
-        if [ -f "package.json" ]; then
-          npm install
-        else
-          echo "Creating minimal package.json..."
-          echo '{"name":"app","version":"1.0.0","dependencies":{}}' > package.json
-          npm install
-        fi
-    
-    - name: Check Android project structure
-      run: |
-        echo "Checking Android project files..."
-        if [ -d "android" ]; then
-          echo "Android directory exists"
-          ls -la android/
-          
-          # Check for essential Gradle wrapper files
-          if [ ! -f "android/gradle/wrapper/gradle-wrapper.jar" ]; then
-            echo "❌ gradle-wrapper.jar is missing!"
-          fi
-          if [ ! -f "android/gradlew" ]; then
-            echo "❌ gradlew script is missing!"
-          fi
-        else
-          echo "❌ Android directory not found!"
-          exit 1
-        fi
-    
-    - name: Download missing Gradle wrapper files
-      run: |
-        cd android
+        # Create directory structure
+        mkdir -p android/{app/src/main/{java/com/test,res/layout},gradle/wrapper}
         
-        # Create gradle wrapper directory if it doesn't exist
-        mkdir -p gradle/wrapper
+        # Create essential Gradle files
+        cat > android/settings.gradle << 'EOF'
+        rootProject.name = 'TestApp'
+        include ':app'
+        EOF
         
-        # Download gradle-wrapper.jar (this is the missing file)
-        echo "Downloading gradle-wrapper.jar..."
-        wget -q -O gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v7.5.1/gradle/wrapper/gradle-wrapper.jar
-        
-        # Ensure gradlew exists and is executable
-        if [ ! -f "gradlew" ]; then
-          echo "Downloading gradlew script..."
-          wget -q https://raw.githubusercontent.com/gradle/gradle/master/gradlew
-          chmod +x gradlew
-        else
-          chmod +x gradlew
-        fi
-        
-        # Ensure gradle-wrapper.properties exists
-        if [ ! -f "gradle/wrapper/gradle-wrapper.properties" ]; then
-          echo "Creating gradle-wrapper.properties..."
-          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-7.5.1-all.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          EOF
-        fi
-        
-        echo "Gradle wrapper files checked/created"
-    
-    - name: Create minimal build.gradle files if missing
-      run: |
-        if [ -d "android" ]; then
-          cd android
-          
-          # Create root build.gradle if missing
-          if [ ! -f "build.gradle" ]; then
-            echo "Creating root build.gradle..."
-            cat > build.gradle << 'EOF'
-            buildscript {
-                repositories {
-                    google()
-                    mavenCentral()
-                }
-                dependencies {
-                    classpath 'com.android.tools.build:gradle:7.3.1'
-                }
+        cat > android/build.gradle << 'EOF'
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
             }
-            
-            allprojects {
-                repositories {
-                    google()
-                    mavenCentral()
-                }
-            }
-            EOF
-          fi
-          
-          # Create app directory and build.gradle if missing
-          mkdir -p app
-          if [ ! -f "app/build.gradle" ]; then
-            echo "Creating app/build.gradle..."
-            cat > app/build.gradle << 'EOF'
-            apply plugin: 'com.android.application'
-            
-            android {
-                compileSdkVersion 33
-                
-                defaultConfig {
-                    applicationId "com.quotesapp"
-                    minSdkVersion 21
-                    targetSdkVersion 33
-                    versionCode 1
-                    versionName "1.0"
-                }
-                
-                buildTypes {
-                    release {
-                        minifyEnabled false
-                    }
-                    debug {
-                        debuggable true
-                    }
-                }
-            }
-            
             dependencies {
-                implementation fileTree(dir: 'libs', include: ['*.jar'])
+                classpath 'com.android.tools.build:gradle:7.3.1'
             }
-            EOF
-          fi
-        fi
-    
-    - name: Setup Android SDK
-      run: |
-        # Install Android SDK components
-        yes | sdkmanager --licenses || true
-        sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+        }
+        
+        allprojects {
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        EOF
+        
+        cat > android/app/build.gradle << 'EOF'
+        apply plugin: 'com.android.application'
+        
+        android {
+            compileSdk 33
+            defaultConfig {
+                applicationId "com.test.app"
+                minSdk 21
+                targetSdk 33
+                versionCode 1
+                versionName "1.0"
+            }
+            buildTypes {
+                release {
+                    minifyEnabled false
+                }
+            }
+        }
+        
+        dependencies {
+        }
+        EOF
+        
+        # Create AndroidManifest.xml
+        cat > android/app/src/main/AndroidManifest.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application
+                android:allowBackup="true"
+                android:icon="@mipmap/ic_launcher"
+                android:label="Test App">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        EOF
+        
+        # Download Gradle wrapper
+        cd android
+        wget -q https://raw.githubusercontent.com/gradle/gradle/master/gradlew
+        chmod +x gradlew
+        
+        mkdir -p gradle/wrapper
+        wget -q https://repo.maven.apache.org/maven2/org/gradle/wrapper/gradle-wrapper/7.5.1/gradle-wrapper-7.5.1.jar \
+          -O gradle/wrapper/gradle-wrapper.jar
+        
+        cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+        distributionBase=GRADLE_USER_HOME
+        distributionPath=wrapper/dists
+        distributionUrl=https\://services.gradle.org/distributions/gradle-7.5.1-bin.zip
+        zipStoreBase=GRADLE_USER_HOME
+        zipStorePath=wrapper/dists
+        EOF
+        
+        cd ..
     
     - name: Build APK
       run: |
         cd android
-        
-        # Test if Gradle wrapper works
-        echo "Testing Gradle wrapper..."
-        ./gradlew --version || echo "Gradle version check failed, but continuing..."
-        
-        echo "Building APK..."
         ./gradlew assembleDebug --no-daemon
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
+        name: test-apk
         path: android/app/build/outputs/apk/debug/*.apk
-        retention-days: 30
-    
-    - name: Check build results
-      if: always()
-      run: |
-        echo "Build artifacts:"
-        find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
-        echo "Android build directory:"
-        ls -la android/app/build/outputs/apk/ 2>/dev/null || echo "No build directory"
